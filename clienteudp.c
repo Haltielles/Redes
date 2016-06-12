@@ -35,18 +35,66 @@ struct hostent {
 #include <string.h> /* memset() */
 #include <sys/time.h> /* select() */
 #include <stdlib.h>
+#include <pthread.h>
 
 #define REMOTE_SERVER_PORT 1500
+#define LOCAL_SERVER_PORT  1500
 #define MAX_MSG 100
 
-void createConnect(){
+void listenConnect(){
+    int sd, rc, n, cliLen;
+    struct sockaddr_in cliAddr, servAddr;
+    char msg[MAX_MSG];
+
+    /* socket creation */
+    sd=socket(AF_INET, SOCK_DGRAM, 0);
+    if(sd<0) {
+        printf(": cannot open socket \n");
+        exit(1);
+    }
+
+    /* bind local server port */
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servAddr.sin_port = htons(LOCAL_SERVER_PORT);
+    rc = bind (sd, (struct sockaddr *) &servAddr,sizeof(servAddr));
+    if(rc<0) {
+        printf(": cannot bind server port number %d \n", LOCAL_SERVER_PORT);
+        exit(1);
+    }
+
+    printf(": waiting for data on port UDP %u\n",LOCAL_SERVER_PORT);
+
+    /* server infinite loop */
+    while(1) {
+
+        /* init buffer */
+        memset(msg,0x0,MAX_MSG);
+
+
+        /* receive message */
+        cliLen = sizeof(cliAddr);
+        n = recvfrom(sd, msg, MAX_MSG, 0,(struct sockaddr *) &cliAddr, &cliLen);
+
+        if(n<0) {
+            printf(": cannot receive data \n");
+            continue;
+        }
+
+        /* print received message */
+        printf(": from %s:UDP%u : %s \n",inet_ntoa(cliAddr.sin_addr),ntohs(cliAddr.sin_port),msg);
+
+    }/* end of server infinite loop */
+
+    return ;
+}
+void *createConnect(){
 	int sd, rc, i;
 	char mensagem[30];
 	struct sockaddr_in cliAddr, remoteServAddr;
 	struct hostent *h;
-	//pegando mensagem
-	printf("etre com a mensagem\n");
-	scanf("%s",mensagem);
+             pthread_t pth;
+
 	/* get server IP address (no check if input is IP address or DNS name */
 	h = gethostbyname("127.0.0.1");//retora a estrutura hstent com base no ip char passado como parâmetro
 	if(h==NULL) {//verifica se foi criado a estrutura hostent
@@ -72,11 +120,21 @@ void createConnect(){
 	//int bind(int sockfd, const struct sockaddr *addr,socklen_t addrlen);
 	rc = bind(sd, (struct sockaddr *) &cliAddr, sizeof(cliAddr));	//nomeia o socket recebendo a porta como nome
 	if(rc<0) {//verifica se a funcão bind funcionou
-		printf(": cannot bind port\n");
+		printf(": cannot bind cliente port\n");
 		exit(1);
 	}
 
-	/* send data */
+            //criando a thread q escuta as mensagens
+             // pth:identificador da nova thread    att:é um atributo de argumento      function:função que será chamada        arg:parametros que deseja passar para a função
+             pthread_create(&pth, NULL, listenConnect, NULL);
+
+             while(1){
+                            //pegando mensagem
+                            printf("etre com a mensagem\n");
+                            scanf("%s",mensagem);
+                            if(!strcmp(mensagem,"exit"))
+                                exit(1);
+             /* send data */
 	//for(i=2;i<argc;i++) {
 		//ssize_t sendto(int socket, const void *message, size_t length,int flags, const struct sockaddr *dest_addr,socklen_t dest_len);
 		rc = sendto(sd,mensagem, strlen(mensagem), 0,(struct sockaddr *) &remoteServAddr,sizeof(remoteServAddr));
@@ -87,15 +145,17 @@ void createConnect(){
 		}
 
 	//}
+             }
 	return;
 }
 
 int main(int argc, char *argv[]) {
 	int op;
+
 	do{printf("escolha o que deseja fazer\n");
-	printf("0 para sair\n");
-	printf("1 parainiciar chat\n");
-	scanf("%d",&op);
+                	printf("0 para sair\n");
+                	printf("1 parainiciar chat\n");
+                	scanf("%d",&op);
 	}while(op<0||op>1);
 	switch (op){
 		case 1:

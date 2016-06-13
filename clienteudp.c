@@ -24,6 +24,31 @@ struct hostent {
 				}
               //#define h_addr  h_addr_list[0]  // for backward compatibility
 */
+/*
+                                UDP
+0                                16                                     31
+ --------------------------------------------------------------
+|   porta de origem            |   porta de destino  |
+ --------------------------------------------------------------
+| tamanho da mensagem |            checksum     |
+ --------------------------------------------------------------
+|                                 dados                               |
+ --------------------------------------------------------------
+|       ...........................                                        |
+ --------------------------------------------------------------
+
+                                    IP
+0                                   16                                 31
+ --------------------------------------------------------------
+|                    endereco IP de origem                  |
+ --------------------------------------------------------------
+|                    endereco IP de destino                  |
+ --------------------------------------------------------------
+|   zero     |   Protocolo    |  Tamanho do UDP      |
+ --------------------------------------------------------------
+
+
+*/
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -39,13 +64,14 @@ struct hostent {
 
 #define REMOTE_SERVER_PORT 1500
 #define LOCAL_SERVER_PORT  1500
-#define MAX_MSG 100
+#define BUFFERSIZE 1024
 
-void listenConnect(){
+
+void *listenConnect(){
     int sd, rc, n, cliLen;
     struct sockaddr_in cliAddr, servAddr;
-    char msg[MAX_MSG];
-
+    char sendmsg[BUFFERSIZE],receivemsg[BUFFERSIZE];
+    char filename[40]="teste.txt";
     /* socket creation */
     sd=socket(AF_INET, SOCK_DGRAM, 0);
     if(sd<0) {
@@ -65,43 +91,67 @@ void listenConnect(){
 
     printf(": waiting for data on port UDP %u\n",LOCAL_SERVER_PORT);
 
+    FILE *fout=fopen(filename,"w");
     /* server infinite loop */
     while(1) {
 
         /* init buffer */
-        memset(msg,0x0,MAX_MSG);
+        //memset(receivemsg,0x0,BUFFERSIZE);
 
 
         /* receive message */
-        cliLen = sizeof(cliAddr);
-        n = recvfrom(sd, msg, MAX_MSG, 0,(struct sockaddr *) &cliAddr, &cliLen);
 
-        if(n<0) {
-            printf(": cannot receive data \n");
-            continue;
-        }
+            int cont = 0;
+            while(1)
+            {
+                //RECEIVE
+                //bytes = recv(s_data_act, &receive_buffer[cont], 1, 0);//receive byte by byte...
+                n = recvfrom(sd, receivemsg, sizeof(receivemsg), 0,(struct sockaddr *) &cliAddr, &cliLen);
+                //PROCESS REQUEST
+                if ( n <= 0 ) break;
 
-        /* print received message */
-        printf(": from %s:UDP%u : %s \n",inet_ntoa(cliAddr.sin_addr),ntohs(cliAddr.sin_port),msg);
+                if (receivemsg[cont] == '\n')
+                { /*end on a LF*/
+                    receivemsg[cont] = '\0';
+                    break;
+                }
+
+                if (receivemsg[cont] != '\r') cont++; /*ignore CRs*/
+            }
+            if ( n <= 0 ) break;
+            fprintf(fout,"%s\n",receivemsg);
+        // cliLen = sizeof(cliAddr);
+
+        //  print received message
+        // printf(": from %s:UDP%u : %s \n",inet_ntoa(cliAddr.sin_addr),ntohs(cliAddr.sin_port),receivemsg);
 
     }/* end of server infinite loop */
 
     return ;
 }
-void *createConnect(){
+
+void createConnect(){
 	int sd, rc, i;
-	char mensagem[30];
-	struct sockaddr_in cliAddr, remoteServAddr;
+    	struct sockaddr_in cliAddr, remoteServAddr;
 	struct hostent *h;
              pthread_t pth;
+             char sendmsg[BUFFERSIZE];
+             char filename[40]="teste.txt";
+
+             FILE *fp;
+             fp = fopen (filename, "r");
+             if (fp == NULL) {
+                printf ("Houve um erro ao abrir o arquivo.\n");
+                return 1;
+             }
 
 	/* get server IP address (no check if input is IP address or DNS name */
-	h = gethostbyname("127.0.0.1");//retora a estrutura hstent com base no ip char passado como parâmetro
+	h = gethostbyname("192.168.254.2");//retora a estrutura hstent com base no ip char passado como parâmetro
 	if(h==NULL) {//verifica se foi criado a estrutura hostent
 		printf(": unknown host \n");
 		exit(1);
 	}
-	printf(": sending %s to '%s' (IP : %d) \n",mensagem, h->h_name,h->h_addr_list[0]);
+	printf(": sending %s to '%s' (IP : %d) \n","mensagem", h->h_name,h->h_addr_list[0]);
 
 	remoteServAddr.sin_family = h->h_addrtype;	//seta o tipo AF_INET (Arpa internet Protocol)
 	//void * memcpy ( void * destination, const void * source, size_t num );
@@ -130,19 +180,27 @@ void *createConnect(){
 
              while(1){
                             //pegando mensagem
-                            printf("etre com a mensagem\n");
-                            scanf("%s",mensagem);
-                            if(!strcmp(mensagem,"exit"))
-                                exit(1);
+                            // printf("etre com a mensagem\n");
+                            // scanf("%s",mensagem);
+                            // if(!strcmp(mensagem,"exit"))
+                            //     exit(1);
              /* send data */
 	//for(i=2;i<argc;i++) {
 		//ssize_t sendto(int socket, const void *message, size_t length,int flags, const struct sockaddr *dest_addr,socklen_t dest_len);
-		rc = sendto(sd,mensagem, strlen(mensagem), 0,(struct sockaddr *) &remoteServAddr,sizeof(remoteServAddr));
-		if(rc<0) {
-		  printf(": cannot send data \n");
-		  close(sd);
-		  exit(1);
-		}
+
+                        char tempmsg[80];
+                         while (!feof(fp)){
+                            fgets(tempmsg,78,fp);
+                            sprintf(sendmsg,"%s",tempmsg);
+                            //send(s_data_act, send_buffer, strlen(send_buffer), 0);
+                            rc = sendto(sd,sendmsg, strlen(fopen), 0,(struct sockaddr *) &remoteServAddr,sizeof(remoteServAddr));
+                            if(rc<0) {
+                              printf(": cannot send data \n");
+                              close(sd);
+                              exit(1);
+                            }
+                        }
+		fclose(fp);
 
 	//}
              }
